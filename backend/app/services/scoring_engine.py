@@ -61,7 +61,8 @@ class ScoringEngine:
                 "max_possible_score": max_possible_score,  # 10 * number of criteria
                 "percentage": round(percentage, 2),
                 "individual_scores": individual_scores,
-                "eligibility_status": eligibility_status
+                "eligibility_status": eligibility_status,
+                "metric_scores": case_result["metric_scores"]
             }
             
             results.append(score_result)

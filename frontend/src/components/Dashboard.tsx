@@ -91,12 +91,8 @@ export function Dashboard({ data }: DashboardProps) {
     const criteriaSource = data?.criteriaData?.criteria || data?.analysisResult?.criteria || {};
     if (!criteriaSource || Object.keys(criteriaSource).length === 0) return [];
     
-    console.log('Raw criteria data:', criteriaSource);
-    
     // Convert criteria object to array format
     const criteriaArray = Object.entries(criteriaSource).map(([name, criteriaData]: [string, any]) => {
-      console.log(`Processing criteria: ${name}`, criteriaData);
-      
       // Extract ideal value from scoring intervals
       let idealValue = 'N/A';
       if (criteriaData.scoring_intervals && Array.isArray(criteriaData.scoring_intervals)) {
@@ -118,7 +114,6 @@ export function Dashboard({ data }: DashboardProps) {
       };
     });
     
-    console.log('Processed criteria array:', criteriaArray);
     return criteriaArray;
   }, [data?.criteriaData?.criteria, data?.analysisResult?.criteria]);
 
@@ -311,107 +306,68 @@ export function Dashboard({ data }: DashboardProps) {
 
   // Get comparison data for selected criteria
   const getComparisonData = () => {
-    if (!selectedCriteria) return null;
-    
-    const resultsSource = data?.analysisResult?.results || results || [];
+    if (!selectedCriteria) return null; 
+
+    const resultsSource = data?.analysisResult?.results || [];
     if (resultsSource.length === 0) return null;
-    
-    console.log('Getting comparison data for:', selectedCriteria);
-    console.log('Available results:', resultsSource);
-    console.log('Available criteria:', criteria);
-    
-    // Find the minimum required value for this criteria
-    const criteriaFromData = criteria.find((c: any) => 
+
+    const currentCriterionDisplayInfo = criteriaForComparison.find(c => c.name === selectedCriteria);
+    const idealDisplayValue = currentCriterionDisplayInfo?.idealValue || 'N/A';
+
+    const originalCriterionData = criteria.find((c: any) =>
       c.parameter && c.parameter.toLowerCase() === selectedCriteria.toLowerCase()
     );
-    const minRequiredValue = criteriaFromData?.min_value || 0;
-    
-    console.log('Found criteria data:', criteriaFromData);
-    console.log('Min required value:', minRequiredValue);
-    
-    // Extract values for the selected criteria from all cases
-    const caseValues = resultsSource.map((result: any, index: number) => {
-      const caseData = result.case_data || {};
-      
-      // Try to find the metric value using various matching strategies
-      let value = null;
-      
-      // Direct match
-      if (caseData[selectedCriteria] !== undefined) {
-        value = caseData[selectedCriteria];
-      } else {
-        // Case-insensitive match
-        const lowerCriteria = selectedCriteria.toLowerCase();
-        for (const [key, val] of Object.entries(caseData)) {
-          if (key.toLowerCase() === lowerCriteria) {
-            value = val;
-            break;
+    const minRequiredValue = originalCriterionData?.min_value;
+
+    const displayValueForRequired = (idealDisplayValue !== 'N/A')
+      ? idealDisplayValue
+      : (minRequiredValue !== null && minRequiredValue !== undefined ? String(minRequiredValue) : 'N/A');
+
+    const caseComparisons = resultsSource.map((result: any, index: number) => {
+      let actualValueForCriterion = 'N/A';
+      let scoreForCriterion = 0;
+
+      if (result.metric_scores && Array.isArray(result.metric_scores)) {
+        const lowerSelectedCriteria = selectedCriteria.toLowerCase().trim();
+        const matchedMetric = result.metric_scores.find((ms: any) => {
+          if (ms.metric_name) {
+            const metricNameFromBackend = String(ms.metric_name).toLowerCase().trim();
+            return metricNameFromBackend === lowerSelectedCriteria;
           }
-        }
-        
-        // Fuzzy match if still not found
-        if (value === null) {
-          for (const [key, val] of Object.entries(caseData)) {
-            const keyLower = key.toLowerCase();
-            if (keyLower.includes(lowerCriteria) || lowerCriteria.includes(keyLower)) {
-              value = val;
-              break;
-            }
-          }
-        }
-      }
-      
+          return false;
+        });
+
+        if (matchedMetric) {
+          actualValueForCriterion = (matchedMetric.actual_value !== null && matchedMetric.actual_value !== undefined && String(matchedMetric.actual_value).trim() !== '')
+            ? String(matchedMetric.actual_value)
+            : 'N/A';
+          scoreForCriterion = matchedMetric.score || 0;
+        } 
+      } 
+
       return {
-        case: `Case ${index + 1}`,
-        value: value !== null ? value : 'N/A',
-        score: result.total_score || result.score || 0,
-        status: result.eligibility_status || 'Unknown'
+        caseName: result.case_id || `Case ${index + 1}`,
+        actualValue: actualValueForCriterion,
+        score: scoreForCriterion, 
       };
     });
-    
-    console.log('Case values for comparison:', caseValues);
-    
+
     return {
-      criteria: criteriaFromData || { parameter: selectedCriteria },
-      cases: caseValues,
-      minRequired: minRequiredValue,
-      chartData: {
-        labels: ['Required Minimum', ...caseValues.map((cv: any) => cv.case)],
-        datasets: [
-          {
-            label: selectedCriteria,
-            data: [minRequiredValue, ...caseValues.map((cv: any) => typeof cv.value === 'number' ? cv.value : 0)],
-            backgroundColor: [
-              '#3B82F6', // blue for required minimum
-              ...caseValues.map((cv: any) => {
-                if (cv.status === 'Eligible') return '#10B981';
-                if (cv.status === 'Review Required') return '#F59E0B';
-                return '#EF4444';
-              })
-            ],
-            borderColor: [
-              '#2563EB', // blue border for required minimum
-              ...caseValues.map((cv: any) => {
-                if (cv.status === 'Eligible') return '#059669';
-                if (cv.status === 'Review Required') return '#D97706';
-                return '#DC2626';
-              })
-            ],
-            borderWidth: 2,
-          },
-        ],
-      }
+      criterionName: selectedCriteria, 
+      requiredValueDisplay: displayValueForRequired,
+      caseComparisons: caseComparisons,
     };
   };
 
   const comparisonData = getComparisonData()
 
+  // Chart options are no longer needed for this specific display, but keep for other charts
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        display: false, // Hide legend to remove the blue tile
+        display: false,
       },
       title: {
         display: false,
@@ -445,7 +401,10 @@ export function Dashboard({ data }: DashboardProps) {
     scales: {
       r: {
         beginAtZero: true,
-        max: 100,
+        max: 10,
+        ticks: {
+          stepSize: 2
+        }
       },
     },
   }
@@ -514,8 +473,8 @@ export function Dashboard({ data }: DashboardProps) {
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="results">Results</TabsTrigger>
-            <TabsTrigger value="criteria">Criteria</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="criteria">Criteria</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -618,70 +577,6 @@ export function Dashboard({ data }: DashboardProps) {
                       )}
                     </div>
                   ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="criteria" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Target className="h-5 w-5" />
-                  Eligibility Criteria
-                </CardTitle>
-                <CardDescription>
-                  Parameters and weights used for evaluation
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {criteria.map((criterion: any, index: number) => {
-                    // Get ideal value from scoring intervals (highest score interval)
-                    let idealValue = null
-                    if (criterion.scoring_intervals && criterion.scoring_intervals.length > 0) {
-                      // Find the interval with the highest score (score 10)
-                      const bestInterval = criterion.scoring_intervals.find((interval: any) => interval.score === 10)
-                      if (bestInterval) {
-                        idealValue = bestInterval.interval
-                      } else {
-                        // Fallback to highest scoring interval
-                        const highestInterval = criterion.scoring_intervals.reduce((best: any, current: any) => 
-                          current.score > best.score ? current : best
-                        )
-                        idealValue = highestInterval.interval
-                      }
-                    }
-
-                    return (
-                      <div key={index} className="border rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <h3 className="font-semibold">{criterion.parameter}</h3>
-                          <Badge variant="outline">{criterion.weight}% weight</Badge>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                          {criterion.min_value !== null && (
-                            <div>
-                              <span className="text-gray-500">Min Required:</span>
-                              <span className="ml-2 font-medium">{criterion.min_value}</span>
-                            </div>
-                          )}
-                          {idealValue && (
-                            <div>
-                              <span className="text-gray-500">Ideal Value:</span>
-                              <span className="ml-2 font-medium text-green-600">{idealValue}</span>
-                            </div>
-                          )}
-                          {criterion.preferred_value && (
-                            <div>
-                              <span className="text-gray-500">Preferred:</span>
-                              <span className="ml-2 font-medium">{criterion.preferred_value}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
                 </div>
               </CardContent>
             </Card>
@@ -804,14 +699,14 @@ export function Dashboard({ data }: DashboardProps) {
                     Compare Criteria
                   </CardTitle>
                   <CardDescription>
-                    Compare required minimum values vs actual case values for selected criteria
+                    Side-by-side comparison of case values for the selected criterion
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <Select value={selectedCriteria} onValueChange={setSelectedCriteria}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select a criteria to compare" />
+                        <SelectValue placeholder="Select a criterion to compare" />
                       </SelectTrigger>
                       <SelectContent>
                         {criteria.length > 0 ? (
@@ -830,21 +725,110 @@ export function Dashboard({ data }: DashboardProps) {
                       </SelectContent>
                     </Select>
                     
-                    {comparisonData && (
-                      <div className="h-80 w-full">
-                        <Bar data={comparisonData.chartData} options={chartOptions} />
+                    {comparisonData && comparisonData.caseComparisons && (
+                      <div className="mt-4 space-y-3 p-3 bg-gray-50 rounded-lg">
+                        <div className="font-semibold text-lg mb-2 text-center">
+                          {comparisonData.criterionName}
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-sm font-medium pb-2 border-b">
+                          <div>Case ID</div>
+                          <div className="text-center">Actual Value</div>
+                          <div className="text-right">Score (0-10)</div>
+                        </div>
+                        {/* Ideal/Required Value Display */}
+                        <div className="grid grid-cols-3 gap-2 text-sm py-2 border-b border-dashed">
+                          <div className="font-medium text-blue-600">Ideal / Required</div>
+                          <div className="text-center font-medium text-blue-600">
+                            {comparisonData.requiredValueDisplay}
+                          </div>
+                          <div className="text-right font-medium text-blue-600">-</div>
+                        </div>
+                        {/* Case Values Display */}
+                        {comparisonData.caseComparisons.map((comp: any, index: number) => (
+                          <div key={index} className="grid grid-cols-3 gap-2 text-sm py-1">
+                            <div>{comp.caseName}</div>
+                            <div className="text-center">{comp.actualValue}</div>
+                            <div className={`text-right font-semibold ${getScoreColor(comp.score * 10)}`}>
+                              {comp.score.toFixed(1)}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
                     
-                    {selectedCriteria && !comparisonData && (
+                    {(!comparisonData || !comparisonData.caseComparisons || comparisonData.caseComparisons.length === 0) && selectedCriteria && (
                       <div className="text-center text-gray-500 py-8">
-                        No data available for the selected criteria
+                        No comparison data available for "{selectedCriteria}" or no cases processed.
                       </div>
                     )}
                   </div>
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="criteria" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5" />
+                  Eligibility Criteria
+                </CardTitle>
+                <CardDescription>
+                  Parameters and weights used for evaluation
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {criteria.map((criterion: any, index: number) => {
+                    // Get ideal value from scoring intervals (highest score interval)
+                    let idealValue = null
+                    if (criterion.scoring_intervals && criterion.scoring_intervals.length > 0) {
+                      // Find the interval with the highest score (score 10)
+                      const bestInterval = criterion.scoring_intervals.find((interval: any) => interval.score === 10)
+                      if (bestInterval) {
+                        idealValue = bestInterval.interval
+                      } else {
+                        // Fallback to highest scoring interval
+                        const highestInterval = criterion.scoring_intervals.reduce((best: any, current: any) => 
+                          current.score > best.score ? current : best
+                        )
+                        idealValue = highestInterval.interval
+                      }
+                    }
+
+                    return (
+                      <div key={index} className="border rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="font-semibold">{criterion.parameter}</h3>
+                          <Badge variant="outline">{criterion.weight}% weight</Badge>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                          {criterion.min_value !== null && (
+                            <div>
+                              <span className="text-gray-500">Min Required:</span>
+                              <span className="ml-2 font-medium">{criterion.min_value}</span>
+                            </div>
+                          )}
+                          {idealValue && (
+                            <div>
+                              <span className="text-gray-500">Ideal Value:</span>
+                              <span className="ml-2 font-medium text-green-600">{idealValue}</span>
+                            </div>
+                          )}
+                          {criterion.preferred_value && (
+                            <div>
+                              <span className="text-gray-500">Preferred:</span>
+                              <span className="ml-2 font-medium">{criterion.preferred_value}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

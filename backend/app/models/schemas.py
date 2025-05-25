@@ -29,6 +29,7 @@ class ScoreResult(BaseModel):
     percentage: float
     individual_scores: Dict[str, float]
     eligibility_status: str
+    metric_scores: Optional[List[Dict[str, Any]]] = None
 
 class AnalysisRequest(BaseModel):
     file_id: str
