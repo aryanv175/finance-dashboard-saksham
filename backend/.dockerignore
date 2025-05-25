@@ -14,3 +14,4 @@ README.md
 .pytest_cache
 .coverage
 node_modules
+*.log

@@ -1,5 +1,7 @@
 node_modules
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 .git
 .gitignore
 README.md
@@ -7,3 +9,5 @@ README.md
 .DS_Store
 dist
 build
+.vscode
+*.log

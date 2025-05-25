@@ -10,9 +10,6 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install additional packages based on your README
-RUN pip install fastapi uvicorn pandas plotly openpyxl python-multipart
-
 # Copy the rest of the application
 COPY . .
 
